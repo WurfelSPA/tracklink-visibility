@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visibility — Recorrido Diario</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Epilogue:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --ink:#f0f2f5;--ink2:#ffffff;--ink3:#e9edef;
+  --line:rgba(0,0,0,0.08);--line2:rgba(0,0,0,0.12);
+  --text:#111b21;--muted:#667781;--muted2:#54656f;
+  --blue:#1a6bb5;--blue-dim:rgba(26,107,181,.10);
+  --green:#16a34a;--green-dim:rgba(22,163,74,.10);
+  --amber:#d97706;--amber-dim:rgba(217,119,6,.10);
+  --red:#dc2626;--red-dim:rgba(220,38,38,.10);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Epilogue',sans-serif;background:var(--ink);color:var(--text);min-height:100vh;font-size:14px;}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:56px;background:var(--ink2);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:200;}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand-name{font-size:16px;font-weight:800;letter-spacing:-.4px;}
+.brand-name span{color:var(--blue);}
+.client-pill{background:var(--blue-dim);border:1px solid rgba(26,107,181,.25);color:var(--blue);font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:20px;font-family:'Space Mono',monospace;}
+.period-badge{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted2);background:var(--ink3);border:1px solid var(--line2);padding:5px 12px;border-radius:6px;}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:blink 2s infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+#filterBar{background:var(--ink2);border-bottom:1px solid var(--line);padding:9px 28px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.fl-label{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1.2px;color:var(--muted);text-transform:uppercase;}
+.fl-select,.fl-date{background:var(--ink3);border:1px solid var(--line2);border-radius:6px;padding:5px 10px;color:var(--text);font-size:12px;font-family:'Space Mono',monospace;outline:none;cursor:pointer;}
+.fl-select:focus,.fl-date:focus{border-color:var(--blue);}
+#filterApply{background:var(--blue);color:#fff;border:none;border-radius:6px;padding:6px 18px;font-weight:700;font-size:12px;cursor:pointer;font-family:'Epilogue',sans-serif;}
+#filterApply:hover{opacity:.85;}
+#filterCount{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);}
+
+.nav-tabs{display:flex;gap:2px;padding:14px 28px 0;background:var(--ink2);border-bottom:1px solid var(--line);}
+.tab-btn{font-family:'Epilogue',sans-serif;font-size:13px;font-weight:600;padding:9px 18px;border:none;background:transparent;color:var(--muted2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s;}
+.tab-btn:hover{color:var(--text);}
+.tab-btn.active{color:var(--blue);border-bottom-color:var(--blue);}
+
+.main{padding:24px 28px;display:flex;flex-direction:column;gap:20px;max-width:1400px;margin:0 auto;width:100%;}
+.sec-label{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.sec-label::after{content:'';flex:1;height:1px;background:var(--line);}
+.kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;}
+.kpi{background:var(--ink2);border:1px solid var(--line);border-radius:12px;padding:16px 18px;position:relative;overflow:hidden;}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent,var(--blue));}
+.kpi-label{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px;}
+.kpi-value{font-size:28px;font-weight:900;line-height:1;color:var(--kv,var(--text));font-family:'Space Mono',monospace;}
+.kpi-sub{font-size:11px;color:var(--muted2);margin-top:5px;font-family:'Space Mono',monospace;}
+.card{background:var(--ink2);border:1px solid var(--line);border-radius:12px;padding:18px 20px;}
+.card-title{font-size:13px;font-weight:700;color:var(--text);}
+.card-sub{font-size:11px;color:var(--muted2);margin-bottom:14px;margin-top:2px;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+.cw{position:relative;width:100%;}
+.data-table{width:100%;border-collapse:collapse;font-size:12px;}
+.data-table th{text-align:left;padding:8px 10px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:1px;border-bottom:1px solid var(--line);font-family:'Space Mono',monospace;white-space:nowrap;}
+.data-table td{padding:9px 10px;border-bottom:1px solid rgba(0,0,0,.04);vertical-align:middle;}
+.data-table tr:last-child td{border-bottom:none;}
+.data-table tr:hover td{background:rgba(26,107,181,.025);}
+.mono{font-family:'Space Mono',monospace;font-size:11px;}
+.sel-btn{padding:7px 14px;border:1px solid var(--line2);border-radius:8px;background:transparent;color:var(--muted2);font-family:'Space Mono',monospace;font-size:11px;cursor:pointer;font-weight:700;transition:all .15s;}
+.sel-btn.active{background:var(--blue-dim);color:var(--blue);border-color:rgba(26,107,181,.3);}
+.sel-btn:hover:not(.active){color:var(--text);}
+.tab-view{display:none;}
+.tab-view.active{display:block;}
+.footer{text-align:center;padding:18px 28px;color:var(--muted);font-size:11px;font-family:'Space Mono',monospace;border-top:1px solid var(--line);}
+#loadingScreen{position:fixed;inset:0;background:var(--ink);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;}
+#loadingScreen.hidden{display:none;}
+.loader-ring{width:48px;height:48px;border:3px solid rgba(26,107,181,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+#loadMsg{font-family:'Space Mono',monospace;font-size:13px;color:var(--muted);}
+#loadError{font-family:'Space Mono',monospace;font-size:12px;color:var(--red);max-width:500px;text-align:center;display:none;}
+#loadRetry{display:none;background:var(--red);color:#fff;border:none;border-radius:6px;padding:8px 18px;font-weight:700;cursor:pointer;}
+@media(max-width:1100px){.kpi-row{grid-template-columns:repeat(3,1fr);}.grid2,.grid3{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+
+<div id="loadingScreen">
+  <div class="loader-ring"></div>
+  <div id="loadMsg">Cargando reporte de recorrido…</div>
+  <div id="loadError"></div>
+  <button id="loadRetry" onclick="retryLoad()">Reintentar</button>
+</div>
+
+<header class="topbar" id="appTopbar" style="display:none;">
+  <div class="brand">
+    <img src="logo.png" alt="Visibility" id="brandLogo" style="height:42px;width:auto;object-fit:contain;display:none;">
+    <svg id="brandIcon" width="32" height="32" viewBox="0 0 32 32" style="border-radius:8px;">
+      <rect width="32" height="32" fill="#1a6bb5"/>
+      <circle cx="16" cy="16" r="8" fill="none" stroke="#fff" stroke-width="2"/>
+      <circle cx="16" cy="16" r="3" fill="#fff"/>
+      <line x1="16" y1="4" x2="16" y2="8" stroke="#fff" stroke-width="1.5"/>
+      <line x1="16" y1="24" x2="16" y2="28" stroke="#fff" stroke-width="1.5"/>
+      <line x1="4" y1="16" x2="8" y2="16" stroke="#fff" stroke-width="1.5"/>
+      <line x1="24" y1="16" x2="28" y2="16" stroke="#fff" stroke-width="1.5"/>
+    </svg>
+    <span class="brand-name">Visibility<span>Dashboard</span></span>
+    <span class="client-pill">RECORRIDO</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <span class="period-badge" id="periodLabel">—</span>
+    <div class="live-dot"></div>
+  </div>
+</header>
+
+<div id="filterBar" style="display:none;">
+  <span class="fl-label">Período</span>
+  <select id="filterMode" class="fl-select" onchange="onFilterModeChange()">
+    <option value="all">Todo el reporte</option>
+    <option value="custom">Fecha personalizada</option>
+  </select>
+  <div id="customDates" style="display:none;align-items:center;gap:8px;">
+    <span class="fl-label">Desde</span>
+    <input type="date" id="filterDesde" class="fl-date">
+    <span class="fl-label">Hasta</span>
+    <input type="date" id="filterHasta" class="fl-date">
+  </div>
+  <button id="filterApply" onclick="applyDateFilter()">Actualizar ▶</button>
+  <span id="filterCount"></span>
+</div>
+
+<nav class="nav-tabs" id="appTabs" style="display:none;">
+  <button class="tab-btn active" onclick="showTab('resumen',this)">Vista General</button>
+  <button class="tab-btn" onclick="showTab('vehiculo',this)">Por Vehículo</button>
+  <button class="tab-btn" onclick="showTab('detalle',this)">Detalle de Viajes</button>
+</nav>
+
+<div id="tab-resumen"  class="tab-view active"></div>
+<div id="tab-vehiculo" class="tab-view"></div>
+<div id="tab-detalle"  class="tab-view"></div>
+
+<footer class="footer" id="appFooter" style="display:none;">
+  Visibility Fleet Dashboard · <span id="footerText"></span>
+</footer>
+
+<script>
+const EXCEL_URL = 'https://raw.githubusercontent.com/WurfelSPA/tracklink-visibility/main/REPORTE%20DE%20RECORRIDO.xlsx';
+const PALETTE   = ['#1a6bb5','#16a34a','#d97706','#dc2626','#7c3aed','#0891b2','#db2777','#65a30d','#ea580c','#0284c7','#9333ea','#0d9488','#b45309','#1d4ed8','#15803d','#b91c1c','#6d28d9'];
+
+let G = { trips:[], allTrips:[], vehiculos:{}, resumen:{}, meta:{}, colors:{} };
+let activeCharts = {};
+let currentUrl = EXCEL_URL;
+
+window.addEventListener('DOMContentLoaded', () => {
+  // Intentar mostrar logo si existe
+  const logo = document.getElementById('brandLogo');
+  const icon = document.getElementById('brandIcon');
+  logo.onload  = () => { logo.style.display=''; icon.style.display='none'; };
+  logo.onerror = () => { logo.style.display='none'; icon.style.display=''; };
+  logo.src = 'logo.png';
+  loadExcel(EXCEL_URL);
+});
+
+function retryLoad() { loadExcel(currentUrl); }
+
+async function loadExcel(url) {
+  currentUrl = url;
+  showLoading('Descargando reporte…');
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    setLoadMsg('Procesando datos…');
+    const wb = XLSX.read(await resp.arrayBuffer(), { type:'array', cellDates:false });
+    parseWorkbook(wb);
+    renderApp();
+    hideLoading();
+  } catch(e) {
+    showLoadError(e.message || String(e));
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// PARSE — estructura exacta del Excel TrackGTS
+// Detalle 1: Alias | Conductor | Secuencial | Estado | Fecha de Inicio |
+//            Posición de Inicio | Dirección de Inicio | Fecha de Fin |
+//            Posición Final | Dirección Final | Tiempo | Distancia (Km) |
+//            Velocidad Máxima (Km/h) | Velocidad Promedio (Km/h)
+// ══════════════════════════════════════════════════════
+function parseWorkbook(wb) {
+  // ── Detalle 1 ──────────────────────────────────────────────────────────────
+  const wsD  = wb.Sheets['Detalle 1'];
+  const rawD = XLSX.utils.sheet_to_json(wsD, { header:1, raw:false, dateNF:'yyyy/mm/dd hh:mm:ss' });
+
+  const hdrIdx = rawD.findIndex(r => r.some(c => c && String(c).trim() === 'Alias'));
+  const hdrs   = rawD[hdrIdx] || [];
+  const ci     = name => hdrs.findIndex(h => h && String(h).trim() === name);
+
+  const iAlias   = ci('Alias');
+  const iCond    = ci('Conductor');
+  const iSeq     = ci('Secuencial');
+  const iEstado  = ci('Estado');
+  const iFIni    = ci('Fecha de Inicio');
+  const iDirIni  = ci('Dirección de Inicio');
+  const iFin     = ci('Fecha de Fin');
+  const iDirFin  = ci('Dirección Final');
+  const iTiempo  = ci('Tiempo');
+  const iDist    = ci('Distancia (Km)');
+  const iVMax    = ci('Velocidad Máxima (Km/h)');
+  const iVProm   = ci('Velocidad Promedio (Km/h)');
+
+  G.trips = [];
+  for (let i = hdrIdx + 1; i < rawD.length; i++) {
+    const r      = rawD[i];
+    const alias  = r[iAlias];
+    if (!alias) continue;
+    const estado = String(r[iEstado] || '').trim();
+    if (estado !== 'Recorridos') continue;   // solo viajes, no paradas
+
+    const fIniRaw = r[iFIni] ? String(r[iFIni]) : '';
+    const fFinRaw = r[iFin]  ? String(r[iFin])  : '';
+    const fechaIni = parseDate(fIniRaw);
+    const fechaFin = parseDate(fFinRaw);
+    const fechaStr = fIniRaw.substring(0,10).replace(/\//g,'-');
+
+    G.trips.push({
+      alias:    String(alias).trim(),
+      cond:     iCond >= 0 ? titleCase(String(r[iCond] || '').trim()) : '',
+      seq:      iSeq  >= 0 ? r[iSeq] : '',
+      fechaIni, fechaFin, fechaStr,
+      dirIni:   iDirIni >= 0 ? cleanDir(String(r[iDirIni] || '')) : '',
+      dirFin:   iDirFin >= 0 ? cleanDir(String(r[iDirFin] || '')) : '',
+      tiempo:   iTiempo >= 0 ? fmtTiempo(r[iTiempo]) : '',
+      dist:     parseNum(r[iDist]),
+      velMax:   parseNum(r[iVMax]),
+      velProm:  parseNum(r[iVProm]),
+    });
+  }
+  G.allTrips = G.trips.slice();
+
+  // ── Resumen 1 ──────────────────────────────────────────────────────────────
+  const wsR  = wb.Sheets['Resumen 1'];
+  const rawR = XLSX.utils.sheet_to_json(wsR, { header:1, raw:false });
+  const hdrR = rawR.findIndex(r => r.some(c => c && String(c).trim() === 'Alias'));
+  if (hdrR >= 0) {
+    const hdrsR = rawR[hdrR];
+    const ciR   = name => hdrsR.findIndex(h => h && String(h).trim() === name);
+    const iRA   = ciR('Alias');
+    const iRDist= ciR('Distancia (Km)');
+    const iRRec = ciR('Recorridos');
+    const iRPar = ciR('Paradas');
+    const iRVMax= ciR('Velocidad Máxima (Km/h)');
+    for (let i = hdrR+1; i < rawR.length; i++) {
+      const r = rawR[i];
+      if (!r[iRA]) continue;
+      const alias = String(r[iRA]).trim();
+      G.resumen[alias] = {
+        distancia:  parseNum(r[iRDist]),
+        recorridos: parseNum(r[iRRec]),
+        paradas:    parseNum(r[iRPar]),
+        velMax:     parseNum(r[iRVMax]),
+      };
+    }
+  }
+
+  // ── Meta período ───────────────────────────────────────────────────────────
+  const periodoRow = rawD.find(r => r.some(c => c && String(c).includes('Desde')));
+  if (periodoRow) {
+    const txt = periodoRow.join(' ');
+    const m = txt.match(/Desde\s*:\s*(\S+)\s+\S+\s+Hasta\s*:\s*(\S+)/);
+    if (m) { G.meta.desde = m[1].substring(0,10); G.meta.hasta = m[2].substring(0,10); }
+  }
+
+  // ── Colores por vehículo ───────────────────────────────────────────────────
+  const aliases = [...new Set(G.trips.map(r=>r.alias))];
+  aliases.forEach((a,i) => { G.colors[a] = PALETTE[i % PALETTE.length]; });
+
+  buildVehiculos();
+}
+
+function buildVehiculos() {
+  G.vehiculos = {};
+  const aliases = [...new Set(G.trips.map(r=>r.alias))];
+  aliases.forEach(alias => {
+    const sub = G.trips.filter(r=>r.alias===alias);
+    const byDate = {};
+    sub.forEach(r => {
+      if (!r.fechaStr) return;
+      const k = r.fechaStr;
+      if (!byDate[k]) byDate[k] = {viajes:0, km:0};
+      byDate[k].viajes++;
+      byDate[k].km = +(byDate[k].km + r.dist).toFixed(1);
+    });
+    const res = G.resumen[alias] || {};
+    G.vehiculos[alias] = {
+      alias, color: G.colors[alias],
+      totalViajes: sub.length,
+      totalKm:     +(res.distancia || sub.reduce((a,r)=>a+r.dist,0)).toFixed(1),
+      paradas:     res.paradas || 0,
+      velMax:      res.velMax  || Math.max(...sub.map(r=>r.velMax), 0),
+      conductores: [...new Set(sub.map(r=>r.cond).filter(Boolean))].join(', ') || '—',
+      byDate, trips: sub,
+    };
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER APP
+// ══════════════════════════════════════════════════════
+function renderApp() {
+  document.getElementById('appTopbar').style.display = '';
+  document.getElementById('filterBar').style.display = 'flex';
+  document.getElementById('appTabs').style.display   = '';
+  document.getElementById('appFooter').style.display = '';
+
+  const fechas = G.allTrips.map(r=>r.fechaStr).filter(Boolean).sort();
+  document.getElementById('filterDesde').value = fechas[0] || '';
+  document.getElementById('filterHasta').value = fechas[fechas.length-1] || '';
+
+  if (G.meta.desde && G.meta.hasta)
+    document.getElementById('periodLabel').textContent = `${fmtDate(G.meta.desde)} — ${fmtDate(G.meta.hasta)}`;
+  document.getElementById('filterCount').textContent = `${G.allTrips.length} viajes`;
+  document.getElementById('footerText').textContent  = `${G.allTrips.length} viajes · actualizado automáticamente`;
+
+  renderResumen();
+  renderVehiculoTab();
+  renderDetalleTab();
+}
+
+// ══════════════════════════════════════════════════════
+// FILTRO
+// ══════════════════════════════════════════════════════
+function onFilterModeChange() {
+  const isCustom = document.getElementById('filterMode').value === 'custom';
+  document.getElementById('customDates').style.display = isCustom ? 'flex' : 'none';
+  if (!isCustom) applyDateFilter();
+}
+
+function applyDateFilter() {
+  const mode = document.getElementById('filterMode').value;
+  if (mode === 'all') {
+    G.trips = G.allTrips.slice();
+  } else {
+    const d = document.getElementById('filterDesde').value;
+    const h = document.getElementById('filterHasta').value;
+    G.trips = G.allTrips.filter(r => {
+      const fs = r.fechaStr;
+      if (!fs) return true;
+      if (d && fs < d) return false;
+      if (h && fs > h) return false;
+      return true;
+    });
+    if (d && h)
+      document.getElementById('periodLabel').textContent = `${fmtDate(d)} — ${fmtDate(h)}`;
+  }
+  document.getElementById('filterCount').textContent = G.trips.length
+    ? `${G.trips.length} viajes`
+    : '⚠ Sin datos en el período';
+  buildVehiculos();
+  renderResumen();
+  renderVehiculoTab();
+  renderDetalleTab();
+}
+
+// ══════════════════════════════════════════════════════
+// VISTA GENERAL
+// ══════════════════════════════════════════════════════
+function renderResumen() {
+  destroyCharts(['cKmDia','cVehKm']);
+  const total = G.trips.length;
+  if (total === 0) {
+    document.getElementById('tab-resumen').innerHTML =
+      `<div class="main"><div class="card" style="text-align:center;padding:48px;">
+        <div style="font-size:36px;margin-bottom:12px;">🚗</div>
+        <div class="card-title">Sin viajes en el período seleccionado</div>
+        <div class="card-sub">Ajusta el rango de fechas</div>
+      </div></div>`;
+    return;
+  }
+
+  const totalKm  = +G.trips.reduce((a,r)=>a+r.dist,0).toFixed(1);
+  const nVeh     = Object.keys(G.vehiculos).length;
+  const velMax   = Math.max(...G.trips.map(r=>r.velMax), 0);
+  const ranking  = Object.values(G.vehiculos).sort((a,b)=>b.totalKm-a.totalKm);
+
+  const byDate = {};
+  G.trips.forEach(r => {
+    if (!r.fechaStr) return;
+    byDate[r.fechaStr] = +((byDate[r.fechaStr]||0) + r.dist).toFixed(1);
+  });
+  const dates = Object.keys(byDate).sort();
+
+  document.getElementById('tab-resumen').innerHTML = `
+  <div class="main">
+    <div>
+      <div class="sec-label">Resumen del período</div>
+      <div class="kpi-row">
+        <div class="kpi" style="--accent:var(--blue);"><div class="kpi-label">Total Viajes</div><div class="kpi-value" style="--kv:var(--blue);">${total}</div><div class="kpi-sub">recorridos</div></div>
+        <div class="kpi" style="--accent:var(--green);"><div class="kpi-label">Km Totales</div><div class="kpi-value" style="--kv:var(--green);">${totalKm.toLocaleString('es-CL')}</div><div class="kpi-sub">kilómetros</div></div>
+        <div class="kpi" style="--accent:var(--amber);"><div class="kpi-label">Prom / Viaje</div><div class="kpi-value" style="--kv:var(--amber);">${total?(totalKm/total).toFixed(1):0}</div><div class="kpi-sub">km promedio</div></div>
+        <div class="kpi" style="--accent:var(--red);"><div class="kpi-label">Vel. Máxima</div><div class="kpi-value" style="--kv:var(--red);">${velMax.toFixed(0)}</div><div class="kpi-sub">km/h registrada</div></div>
+        <div class="kpi" style="--accent:#7c3aed;"><div class="kpi-label">Vehículos</div><div class="kpi-value" style="--kv:#7c3aed;">${nVeh}</div><div class="kpi-sub">activos</div></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title">Km recorridos por día</div>
+        <div class="card-sub">Flota completa · ${dates.length} días</div>
+        <div class="cw" style="height:220px;"><canvas id="cKmDia"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Km por vehículo</div>
+        <div class="card-sub">Total en el período</div>
+        <div class="cw" style="height:220px;"><canvas id="cVehKm"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:14px;">Ranking de vehículos</div>
+      <table class="data-table">
+        <thead><tr><th>#</th><th>Vehículo</th><th>Conductor(es)</th><th>Viajes</th><th>Paradas</th><th>Km Total</th><th>Prom/Viaje</th><th>Vel. Máx</th><th>% Flota</th></tr></thead>
+        <tbody>
+          ${ranking.map((v,i)=>`<tr>
+            <td><span class="mono" style="font-weight:700;color:${i===0?'var(--red)':i===1?'var(--amber)':'var(--blue)'};">${i+1}</span></td>
+            <td><span style="font-weight:700;font-size:12px;color:${v.color};">${v.alias}</span></td>
+            <td><span class="mono" style="color:var(--muted2);">${v.conductores}</span></td>
+            <td><span class="mono">${v.totalViajes}</span></td>
+            <td><span class="mono" style="color:var(--muted2);">${v.paradas}</span></td>
+            <td><span class="mono" style="font-weight:700;">${v.totalKm.toLocaleString('es-CL')} km</span></td>
+            <td><span class="mono">${v.totalViajes?(v.totalKm/v.totalViajes).toFixed(1):0} km</span></td>
+            <td><span class="mono" style="color:${v.velMax>=100?'var(--red)':v.velMax>=80?'var(--amber)':'var(--muted2)'};">${v.velMax.toFixed(0)} km/h</span></td>
+            <td><div style="display:flex;align-items:center;gap:8px;">
+              <div style="flex:1;height:5px;background:var(--ink3);border-radius:3px;overflow:hidden;">
+                <div style="height:100%;width:${totalKm?Math.round(v.totalKm/totalKm*100):0}%;background:${v.color};"></div>
+              </div>
+              <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);">${totalKm?Math.round(v.totalKm/totalKm*100):0}%</span>
+            </div></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+
+  setTimeout(() => {
+    activeCharts.cKmDia = new Chart(document.getElementById('cKmDia'), {
+      type:'bar',
+      data:{ labels: dates.map(d=>d.substring(5)),
+        datasets:[{label:'Km',data:dates.map(d=>byDate[d]||0),backgroundColor:'rgba(26,107,181,0.75)',borderRadius:4,borderSkipped:false}] },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}}, scales:{x:xOpts(),y:yOpts()} }
+    });
+    const topVeh = ranking.slice(0,10);
+    activeCharts.cVehKm = new Chart(document.getElementById('cVehKm'), {
+      type:'bar',
+      data:{ labels: topVeh.map(v=>v.alias.split(' ').pop()),
+        datasets:[{label:'Km',data:topVeh.map(v=>v.totalKm),
+          backgroundColor:topVeh.map(v=>v.color+'cc'),borderRadius:4,borderSkipped:false}] },
+      options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y',
+        plugins:{legend:{display:false}}, scales:{x:yOpts(),y:xOpts()} }
+    });
+  }, 80);
+}
+
+// ══════════════════════════════════════════════════════
+// POR VEHÍCULO
+// ══════════════════════════════════════════════════════
+function renderVehiculoTab() {
+  const aliases = Object.keys(G.vehiculos);
+  if (!aliases.length) { document.getElementById('tab-vehiculo').innerHTML=''; return; }
+  const btns = aliases.map((a,i)=>`<button class="sel-btn${i===0?' active':''}" onclick="selectVehiculo(this,'${a.replace(/'/g,"\\'")}')">${a.split(' ').pop()}</button>`).join('');
+  document.getElementById('tab-vehiculo').innerHTML = `
+  <div class="main">
+    <div><div class="sec-label">Selector de vehículo</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;" id="vehBtns">${btns}</div>
+    </div>
+    <div id="vehPanel"></div>
+  </div>`;
+  renderVehiclePanel(aliases[0]);
+}
+
+function selectVehiculo(btn, alias) {
+  document.querySelectorAll('#vehBtns .sel-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderVehiclePanel(alias);
+}
+
+function renderVehiclePanel(alias) {
+  destroyCharts(['cVKm','cVViajes']);
+  const v = G.vehiculos[alias];
+  if (!v) return;
+  const dates = Object.keys(v.byDate).sort();
+
+  document.getElementById('vehPanel').innerHTML = `
+  <div style="display:flex;flex-direction:column;gap:16px;margin-top:4px;">
+    <div class="grid3">
+      <div class="card">
+        <div class="sec-label" style="font-size:9px;margin-bottom:10px;">Ficha del vehículo</div>
+        <div style="font-size:18px;font-weight:900;color:${v.color};margin-bottom:4px;">${alias.split(' ').pop()}</div>
+        <div style="font-size:12px;font-weight:600;color:var(--muted2);margin-bottom:10px;">${alias}</div>
+        <div style="font-size:12px;color:var(--muted2);margin-bottom:12px;">Conductor: <span style="color:var(--text);font-weight:600;">${v.conductores}</span></div>
+        <div style="display:flex;flex-direction:column;gap:7px;">
+          <div style="display:flex;justify-content:space-between;"><span class="mono" style="color:var(--muted2);">Viajes</span><span class="mono" style="font-weight:700;">${v.totalViajes}</span></div>
+          <div style="display:flex;justify-content:space-between;"><span class="mono" style="color:var(--muted2);">Paradas</span><span class="mono">${v.paradas}</span></div>
+          <div style="display:flex;justify-content:space-between;"><span class="mono" style="color:var(--muted2);">Km total</span><span class="mono" style="font-weight:700;color:var(--green);">${v.totalKm.toLocaleString('es-CL')} km</span></div>
+          <div style="display:flex;justify-content:space-between;"><span class="mono" style="color:var(--muted2);">Prom/viaje</span><span class="mono">${v.totalViajes?(v.totalKm/v.totalViajes).toFixed(1):0} km</span></div>
+          <div style="display:flex;justify-content:space-between;"><span class="mono" style="color:var(--muted2);">Vel. máx</span><span class="mono" style="color:${v.velMax>=100?'var(--red)':v.velMax>=80?'var(--amber)':'var(--muted2)'};">${v.velMax.toFixed(0)} km/h</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Km por día</div><div class="card-sub">Evolución del período</div>
+        <div class="cw" style="height:180px;"><canvas id="cVKm"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Viajes por día</div><div class="card-sub">Cantidad de recorridos</div>
+        <div class="cw" style="height:180px;"><canvas id="cVViajes"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="margin-bottom:12px;">Recorridos del vehículo</div>
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Fecha</th><th>Hora inicio</th><th>Hora fin</th><th>Km</th><th>Duración</th><th>Vel. máx</th><th>Vel. prom</th><th>Origen</th><th>Destino</th></tr></thead>
+          <tbody>
+            ${v.trips.slice(0,200).map((t,i)=>`<tr>
+              <td><span class="mono" style="color:var(--muted);">${String(i+1).padStart(3,'0')}</span></td>
+              <td><span class="mono">${t.fechaIni?t.fechaIni.toLocaleDateString('es-CL'):'—'}</span></td>
+              <td><span class="mono" style="color:var(--blue);">${t.fechaIni?fmtHora(t.fechaIni):'—'}</span></td>
+              <td><span class="mono" style="color:var(--muted2);">${t.fechaFin?fmtHora(t.fechaFin):'—'}</span></td>
+              <td><span class="mono" style="font-weight:700;color:${t.dist>50?'var(--green)':'var(--text)'};">${t.dist.toFixed(1)} km</span></td>
+              <td><span class="mono" style="color:var(--muted2);">${t.tiempo||'—'}</span></td>
+              <td><span class="mono" style="color:${t.velMax>=100?'var(--red)':t.velMax>=80?'var(--amber)':'var(--muted2)'};">${t.velMax>0?t.velMax.toFixed(0)+' km/h':'—'}</span></td>
+              <td><span class="mono" style="color:var(--muted2);">${t.velProm>0?t.velProm.toFixed(1)+' km/h':'—'}</span></td>
+              <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><span style="font-size:11px;color:var(--muted2);">${t.dirIni||'—'}</span></td>
+              <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><span style="font-size:11px;color:var(--muted2);">${t.dirFin||'—'}</span></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+
+  setTimeout(() => {
+    activeCharts.cVKm = new Chart(document.getElementById('cVKm'), {
+      type:'bar',
+      data:{ labels:dates.map(d=>d.substring(5)),
+        datasets:[{label:'Km',data:dates.map(d=>v.byDate[d]?.km||0),backgroundColor:v.color+'99',borderRadius:3,borderSkipped:false}] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:xOpts(),y:yOpts()} }
+    });
+    activeCharts.cVViajes = new Chart(document.getElementById('cVViajes'), {
+      type:'bar',
+      data:{ labels:dates.map(d=>d.substring(5)),
+        datasets:[{label:'Viajes',data:dates.map(d=>v.byDate[d]?.viajes||0),backgroundColor:'rgba(22,163,74,0.75)',borderRadius:3,borderSkipped:false}] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:xOpts(),y:yOpts()} }
+    });
+  }, 80);
+}
+
+// ══════════════════════════════════════════════════════
+// DETALLE DE VIAJES
+// ══════════════════════════════════════════════════════
+function renderDetalleTab() {
+  document.getElementById('tab-detalle').innerHTML = `
+  <div class="main">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div><div class="card-title">Log de recorridos</div><div class="card-sub">${G.trips.length} viajes</div></div>
+        <input type="text" id="dtlSearch" placeholder="Filtrar vehículo o conductor…"
+          style="background:var(--ink3);border:1px solid var(--line2);border-radius:6px;padding:6px 12px;font-size:12px;outline:none;width:240px;"
+          oninput="filterDetalle()">
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Vehículo</th><th>Conductor</th><th>Fecha</th><th>Inicio</th><th>Fin</th><th>Km</th><th>Duración</th><th>Vel. máx</th><th>Vel. prom</th></tr></thead>
+          <tbody id="dtlBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+  renderDetalleRows(G.trips);
+}
+
+function filterDetalle() {
+  const q = document.getElementById('dtlSearch').value.toLowerCase();
+  renderDetalleRows(q ? G.trips.filter(r=>r.alias.toLowerCase().includes(q)||r.cond.toLowerCase().includes(q)) : G.trips);
+}
+
+function renderDetalleRows(rows) {
+  document.getElementById('dtlBody').innerHTML = rows.slice(0,500).map((r,i)=>`<tr>
+    <td><span class="mono" style="color:var(--muted);">${String(i+1).padStart(3,'0')}</span></td>
+    <td><span style="font-weight:700;font-size:12px;color:${G.colors[r.alias]||'var(--blue)'};">${r.alias}</span></td>
+    <td><span class="mono" style="color:var(--muted2);">${r.cond||'—'}</span></td>
+    <td><span class="mono">${r.fechaIni?r.fechaIni.toLocaleDateString('es-CL'):'—'}</span></td>
+    <td><span class="mono" style="color:var(--blue);">${r.fechaIni?fmtHora(r.fechaIni):'—'}</span></td>
+    <td><span class="mono" style="color:var(--muted2);">${r.fechaFin?fmtHora(r.fechaFin):'—'}</span></td>
+    <td><span class="mono" style="font-weight:700;color:${r.dist>50?'var(--green)':'var(--text)'};">${r.dist.toFixed(1)} km</span></td>
+    <td><span class="mono" style="color:var(--muted2);">${r.tiempo||'—'}</span></td>
+    <td><span class="mono" style="color:${r.velMax>=100?'var(--red)':r.velMax>=80?'var(--amber)':'var(--muted2)'};">${r.velMax>0?r.velMax.toFixed(0)+' km/h':'—'}</span></td>
+    <td><span class="mono" style="color:var(--muted2);">${r.velProm>0?r.velProm.toFixed(1)+' km/h':'—'}</span></td>
+  </tr>`).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════
+function showTab(id, btn) {
+  document.querySelectorAll('.tab-view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.nav-tabs .tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  btn.classList.add('active');
+}
+function destroyCharts(ids) {
+  ids.forEach(id=>{ if(activeCharts[id]){activeCharts[id].destroy();delete activeCharts[id];} });
+}
+function xOpts(e={}) { return {ticks:{color:'#667781',font:{family:'Space Mono',size:9}},grid:{display:false},border:{color:'transparent'},...e}; }
+function yOpts(e={}) { return {ticks:{color:'#667781',font:{family:'Space Mono',size:9}},grid:{color:'rgba(0,0,0,0.04)'},border:{color:'transparent'},...e}; }
+
+function parseDate(s) {
+  if (!s) return null;
+  const norm = String(s).replace(/\//g,'-').replace(' ','T');
+  const d = new Date(norm);
+  return isNaN(d) ? null : d;
+}
+function parseNum(v) {
+  if (v === '-' || v === null || v === undefined) return 0;
+  const n = parseFloat(String(v).replace(',','.'));
+  return isNaN(n) ? 0 : n;
+}
+function titleCase(s) { return s.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase()); }
+function cleanDir(d) { return d.replace(/VMax[A-Za-z]+:\d+,?\s*/g,'').split(',')[0].trim() || d; }
+function fmtHora(d) { return d.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}); }
+function fmtTiempo(v) {
+  // SheetJS puede devolver un número decimal (fracción de día) o string
+  if (!v || v === '-') return '';
+  if (typeof v === 'number') {
+    const totalSec = Math.round(v * 86400);
+    const h = Math.floor(totalSec/3600), m = Math.floor((totalSec%3600)/60), s = totalSec%60;
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+  return String(v);
+}
+function fmtDate(s) {
+  try { return new Date(String(s).substring(0,10).replace(/\//g,'-')+'T00:00:00')
+    .toLocaleDateString('es-CL',{day:'2-digit',month:'short',year:'numeric'}); }
+  catch { return s; }
+}
+function showLoading(msg) { document.getElementById('loadingScreen').classList.remove('hidden'); document.getElementById('loadMsg').textContent=msg; }
+function setLoadMsg(msg)  { document.getElementById('loadMsg').textContent=msg; }
+function hideLoading()    { document.getElementById('loadingScreen').classList.add('hidden'); }
+function showLoadError(msg) {
+  document.getElementById('loadMsg').textContent='';
+  document.getElementById('loadError').textContent='⚠ '+msg;
+  document.getElementById('loadError').style.display='block';
+  document.getElementById('loadRetry').style.display='inline-block';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+name: Update Visibility Dashboard
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+jobs:
+  update-dashboard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          npm install puppeteer adm-zip
+          pip install openpyxl
+
+      - name: Download report
+        env:
+          TL_USER:        ${{ secrets.TL_USER }}
+          TL_PASSWORD:    ${{ secrets.TL_PASSWORD }}
+          TL_DOMAIN:      ${{ secrets.TL_DOMAIN }}
+          TL_REPORT_TYPE: ${{ secrets.TL_REPORT_TYPE }}
+          TL_UNIT_IDS:    ${{ secrets.TL_UNIT_IDS }}
+        run: |
+          node download.js
+          mv "REPORTE DE RECORRIDO.xlsx" latest.xlsx
+
+      - name: Merge history
+        run: python merge_history.py
+
+      - name: Commit and push
+        run: |
+          rm -f latest.xlsx
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name  "github-actions[bot]"
+          git add "REPORTE DE RECORRIDO.xlsx"
+          if git diff --staged --quiet; then
+            echo "Sin cambios."
+          else
+            git commit -m "chore: actualiza recorrido $(date -u +%Y-%m-%dT%H:%M)Z"
+            git push
+          fi
