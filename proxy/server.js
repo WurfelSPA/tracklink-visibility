@@ -187,7 +187,7 @@ app.get('/api/units', async (req, res) => {
     const text = await r.text();
     const json = JSON.parse(text.replace(/^[^(]+\(/, '').replace(/\);?\s*$/, ''));
     const units = json
-      .filter(u => u.unitId > 0 && u.alias && !/^\s*(No Asignado|Flota)/i.test(u.alias))
+      .filter(u => u.unitId > 0 && u.alias && !/^\s*(No Asignado|Flota|Cortadoras)/i.test(u.alias))
       .map(u => ({ id: u.unitId, alias: u.alias.trim() }))
       .sort((a, b) => a.alias.localeCompare(b.alias));
     res.json(units);
