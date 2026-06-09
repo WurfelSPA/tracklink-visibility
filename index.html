@@ -79,14 +79,13 @@ body{font-family:'Epilogue',sans-serif;background:var(--ink);color:var(--text);m
 #loadRetry{display:none;background:var(--red);color:#fff;border:none;border-radius:6px;padding:8px 18px;font-weight:700;cursor:pointer;}
 @media(max-width:1100px){.kpi-row{grid-template-columns:repeat(3,1fr);}.grid2,.grid3{grid-template-columns:1fr;}}
 /* ── Historial GPS ──────────────────────────────────── */
-.period-btns{display:flex;gap:6px;flex-wrap:wrap;}
-.period-btn{padding:5px 14px;border:1.5px solid var(--line2);border-radius:6px;background:var(--ink2);color:var(--muted2);font-family:'Space Mono',monospace;font-size:11px;cursor:pointer;font-weight:700;transition:all .15s;}
-.period-btn.active,.period-btn:hover{background:var(--blue);color:#fff;border-color:var(--blue);}
-.hist-unit-sel{background:var(--ink3);border:1px solid var(--line2);border-radius:8px;padding:8px 14px;font-family:'Epilogue',sans-serif;font-size:13px;color:var(--text);min-width:260px;outline:none;}
-.hist-unit-sel:focus{border-color:var(--blue);}
-#btnConsultarHist{background:var(--blue);color:#fff;border:none;border-radius:6px;padding:7px 22px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Epilogue',sans-serif;}
-#btnConsultarHist:disabled{opacity:.5;cursor:not-allowed;}
-.hist-loading{text-align:center;padding:48px;color:var(--muted);font-family:'Space Mono',monospace;font-size:12px;}
+.rank-row-link{cursor:pointer;}
+.rank-row-link:hover td{background:rgba(26,107,181,.06)!important;}
+.hist-menu{position:fixed;z-index:9999;background:var(--ink2);border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.14);min-width:190px;overflow:hidden;display:none;}
+.hist-menu-title{padding:8px 14px 6px;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--line);font-family:'Space Mono',monospace;}
+.hist-menu-item{padding:9px 14px;font-size:13px;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .1s;}
+.hist-menu-item:hover{background:var(--blue-dim);color:var(--blue);}
+.hist-menu-item.loading{opacity:.5;pointer-events:none;}
 .connect-card{background:var(--amber-dim);border:1px solid rgba(217,119,6,.3);border-radius:12px;padding:20px 24px;}
 .bookmarklet-link{display:inline-block;background:var(--amber);color:#fff;border-radius:6px;padding:7px 18px;font-weight:700;font-size:13px;text-decoration:none;font-family:'Epilogue',sans-serif;cursor:grab;}
 </style>
@@ -141,21 +140,25 @@ body{font-family:'Epilogue',sans-serif;background:var(--ink);color:var(--text);m
   <button class="tab-btn active" onclick="showTab('resumen',this)">Vista General</button>
   <button class="tab-btn" onclick="showTab('vehiculo',this)">Por Vehículo</button>
   <button class="tab-btn" onclick="showTab('detalle',this)">Detalle de Viajes</button>
-  <button class="tab-btn" onclick="showTab('historial',this)">Historial GPS</button>
 </nav>
 
 <div id="tab-resumen"  class="tab-view active"></div>
 <div id="tab-vehiculo" class="tab-view"></div>
 <div id="tab-detalle"  class="tab-view"></div>
-<div id="tab-historial" class="tab-view"></div>
+<!-- Menú contextual historial -->
+<div id="histMenu" class="hist-menu">
+  <div class="hist-menu-title" id="histMenuTitle"></div>
+  <div id="histMenuItems"></div>
+</div>
 
 <footer class="footer" id="appFooter" style="display:none;">
   Visibility Fleet Dashboard · <span id="footerText"></span>
 </footer>
 
 <script>
-const EXCEL_URL = 'https://raw.githubusercontent.com/WurfelSPA/tracklink-visibility/main/REPORTE%20DE%20RECORRIDO.xlsx';
-const PALETTE   = ['#1a6bb5','#16a34a','#d97706','#dc2626','#7c3aed','#0891b2','#db2777','#65a30d','#ea580c','#0284c7','#9333ea','#0d9488','#b45309','#1d4ed8','#15803d','#b91c1c','#6d28d9'];
+const EXCEL_URL  = 'https://raw.githubusercontent.com/WurfelSPA/tracklink-visibility/main/REPORTE%20DE%20RECORRIDO.xlsx';
+const PROXY_URL  = 'https://tracklink-visibility-proxy.onrender.com'; // URL del proxy en Render
+const PALETTE    = ['#1a6bb5','#16a34a','#d97706','#dc2626','#7c3aed','#0891b2','#db2777','#65a30d','#ea580c','#0284c7','#9333ea','#0d9488','#b45309','#1d4ed8','#15803d','#b91c1c','#6d28d9'];
 
 let G = { trips:[], allTrips:[], vehiculos:{}, resumen:{}, meta:{}, colors:{} };
 let activeCharts = {};
@@ -168,7 +171,6 @@ window.addEventListener('DOMContentLoaded', () => {
   logo.onerror = () => { logo.style.display='none'; icon.style.display=''; };
   logo.src = 'logo.png';
   initTGSSession();
-  renderHistorialTab();
   loadExcel(EXCEL_URL);
 });
 
@@ -427,13 +429,16 @@ function renderResumen() {
     </div>
 
     <div class="card">
-      <div class="card-title" style="margin-bottom:14px;">Ranking de vehículos</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <div class="card-title">Ranking de vehículos</div>
+        <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--muted2);">Clic en vehículo → descargar historial</span>
+      </div>
       <table class="data-table">
         <thead><tr><th>#</th><th>Vehículo</th><th>Conductor(es)</th><th>Viajes</th><th>Paradas</th><th>Km Total</th><th>Prom/Viaje</th><th>Vel. Máx</th><th>% Flota</th></tr></thead>
         <tbody>
-          ${ranking.map((v,i)=>`<tr>
+          ${ranking.map((v,i)=>`<tr class="rank-row-link" onclick="openHistMenu(event,'${v.alias.replace(/'/g,"\\'")}')">
             <td><span class="mono" style="font-weight:700;color:${i===0?'var(--red)':i===1?'var(--amber)':'var(--blue)'};">${i+1}</span></td>
-            <td><span style="font-weight:700;font-size:12px;color:${v.color};">${v.alias}</span></td>
+            <td><span style="font-weight:700;font-size:12px;color:${v.color};">${v.alias} <span style="font-size:10px;opacity:.5;">↓</span></span></td>
             <td><span class="mono" style="color:var(--muted2);">${v.conductores}</span></td>
             <td><span class="mono">${v.totalViajes}</span></td>
             <td><span class="mono" style="color:var(--muted2);">${v.paradas}</span></td>
@@ -660,44 +665,17 @@ function fmtDate(s) {
 const TGS = { hash: null, urlGTS: null, units: [], connected: false };
 
 function initTGSSession() {
-  const p = new URLSearchParams(window.location.search);
-  const ts = p.get('ts'), api = p.get('api');
-  if (ts && api) {
-    TGS.hash   = decodeURIComponent(ts);
-    TGS.urlGTS = decodeURIComponent(api);
-    TGS.connected = true;
-    window.history.replaceState({}, '', window.location.pathname);
-    try { sessionStorage.setItem('tgs_session', JSON.stringify({hash:TGS.hash, urlGTS:TGS.urlGTS})); } catch(e){}
-    loadTGSUnits();
-    return;
-  }
-  try {
-    const saved = sessionStorage.getItem('tgs_session');
-    if (saved) {
-      const s = JSON.parse(saved);
-      TGS.hash = s.hash; TGS.urlGTS = s.urlGTS; TGS.connected = true;
-      loadTGSUnits();
-      return;
-    }
-  } catch(e) {}
-  TGS.connected = false;
+  // Con el proxy, no se necesita sesión del lado cliente — carga unidades directamente
+  loadTGSUnits();
 }
 
 function loadTGSUnits() {
-  if (!TGS.connected) return;
-  const cbName = '__tgsU_' + Date.now();
-  const script  = document.createElement('script');
-  window[cbName] = function(data) {
-    TGS.units = (Array.isArray(data) ? data : [])
-      .filter(u => u.unitId > 0 && u.alias && !/^(\s*No Asignado|Flota|Cortadoras)/i.test(u.alias))
-      .map(u => ({id: u.unitId, alias: u.alias.trim()}))
-      .sort((a,b) => a.alias.localeCompare(b.alias));
-    document.head.removeChild(script);
-    delete window[cbName];
-  };
-  script.src = `${TGS.urlGTS}api/units2/${TGS.hash}?callback=${cbName}&_=${Date.now()}`;
-  script.onerror = () => { document.head.removeChild(script); delete window[cbName]; };
-  document.head.appendChild(script);
+  fetch(`${PROXY_URL}/api/units`)
+    .then(r => r.json())
+    .then(data => {
+      if (Array.isArray(data)) TGS.units = data;
+    })
+    .catch(() => {}); // Silencioso — el menú igual funciona con aliases del ranking
 }
 
 function tgsDateRange(period) {
@@ -732,113 +710,120 @@ function tgsDateRange(period) {
 }
 
 // ══════════════════════════════════════════════════════
-// HISTORIAL GPS TAB
+// MENÚ CONTEXTUAL HISTORIAL
 // ══════════════════════════════════════════════════════
-let histPeriod = 'hoy';
+const HIST_PERIODS = [
+  {k:'hora', l:'La última hora'},
+  {k:'hoy',  l:'Hoy'},
+  {k:'ayer', l:'Ayer'},
+  {k:'2dias',l:'Últimos 2 días'},
+  {k:'3dias',l:'Últimos 3 días'},
+];
 
-function renderHistorialTab() {
-  const el = document.getElementById('tab-historial');
-  if (!TGS.connected) {
-    const bm = `javascript:(function(){var j=JSON.parse(sessionStorage.getItem('JSONUSER')||'null');if(!j){alert('Ingresa a TrackGTS primero');return;}var h=encodeURIComponent(j.hash),a=encodeURIComponent(sessionStorage.getItem('URLGTS')||'https://www.trackgts.com:82/');window.open('${window.location.origin}${window.location.pathname}?ts='+h+'\\x26api='+a,'_blank');})()`;
-    el.innerHTML = `
-    <div class="main">
-      <div class="connect-card">
-        <div class="sec-label">Conectar con TrackGTS</div>
-        <p style="font-size:13px;margin-bottom:12px;">Para consultar el Historial GPS, arrastra este botón a tu barra de marcadores de Chrome. Luego, cuando estés en TrackGTS, haz clic en él.</p>
-        <a class="bookmarklet-link" href="${bm}" onclick="return false;" draggable="true">📡 Dashboard → TrackGTS</a>
-        <p style="font-size:11px;color:var(--muted2);margin-top:10px;font-family:'Space Mono',monospace;">① Arrastra el botón a la barra de marcadores &nbsp;② En TrackGTS, haz clic en él</p>
-      </div>
-    </div>`;
+let _histAlias = null;
+
+function openHistMenu(event, alias) {
+  event.stopPropagation();
+  _histAlias = alias;
+  const menu = document.getElementById('histMenu');
+  document.getElementById('histMenuTitle').textContent = alias.split(' ').pop();
+
+  document.getElementById('histMenuItems').innerHTML = HIST_PERIODS.map(p =>
+    `<div class="hist-menu-item" onclick="downloadHistorial('${alias.replace(/'/g,"\\'")}','${p.k}',this)">
+      <span style="font-size:14px;">📥</span> ${p.l}
+    </div>`
+  ).join('');
+
+  const x = Math.min(event.clientX, window.innerWidth - 210);
+  const y = Math.min(event.clientY + 4, window.innerHeight - 220);
+  menu.style.left = x + 'px';
+  menu.style.top  = y + 'px';
+  menu.style.display = 'block';
+}
+
+document.addEventListener('click', () => {
+  document.getElementById('histMenu').style.display = 'none';
+});
+
+function getTGSUnitId(alias) {
+  const a = alias.trim().toLowerCase();
+  // Busca por coincidencia exacta primero, luego parcial
+  const exact = TGS.units.find(u => u.alias.trim().toLowerCase() === a);
+  if (exact) return exact.id;
+  const partial = TGS.units.find(u => u.alias.trim().toLowerCase().includes(a) || a.includes(u.alias.trim().toLowerCase()));
+  return partial ? partial.id : null;
+}
+
+function downloadHistorial(alias, period, itemEl) {
+  // Buscar unitId en la lista cargada desde el proxy, o desde los viajes del Excel
+  const unitId = getTGSUnitId(alias);
+  if (!unitId) {
+    itemEl.innerHTML = `<span>⚠</span> Vehículo no encontrado en el sistema`;
+    setTimeout(() => { document.getElementById('histMenu').style.display='none'; }, 2000);
     return;
   }
 
-  const PERIODS = [{k:'hora',l:'Última hora'},{k:'hoy',l:'Hoy'},{k:'ayer',l:'Ayer'},{k:'2dias',l:'Últ. 2 días'},{k:'3dias',l:'Últ. 3 días'}];
-  const unitOpts = TGS.units.map(u=>`<option value="${u.id}">${u.alias}</option>`).join('');
+  itemEl.classList.add('loading');
+  itemEl.innerHTML = `<span>⏳</span> Descargando…`;
 
-  el.innerHTML = `
-  <div class="main">
-    <div class="card">
-      <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
-        <div>
-          <div class="fl-label" style="margin-bottom:5px;">Vehículo</div>
-          <select id="histUnit" class="hist-unit-sel">
-            <option value="">— Seleccionar —</option>${unitOpts}
-          </select>
-        </div>
-        <div>
-          <div class="fl-label" style="margin-bottom:5px;">Período</div>
-          <div class="period-btns">
-            ${PERIODS.map(p=>`<button class="period-btn${p.k===histPeriod?' active':''}" onclick="setHistPeriod('${p.k}',this)">${p.l}</button>`).join('')}
-          </div>
-        </div>
-        <button id="btnConsultarHist" onclick="consultarHistorial()">Consultar ▶</button>
-      </div>
-      <div id="histData"><div class="hist-loading">Selecciona vehículo y período.</div></div>
-    </div>
-  </div>`;
-}
+  const {start, end} = tgsDateRange(period);
 
-function setHistPeriod(p, btn) {
-  histPeriod = p;
-  document.querySelectorAll('.period-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-}
-
-function consultarHistorial() {
-  const unitId = document.getElementById('histUnit')?.value;
-  if (!unitId) { alert('Selecciona un vehículo'); return; }
-  const btn = document.getElementById('btnConsultarHist');
-  btn.disabled = true; btn.textContent = 'Consultando…';
-  document.getElementById('histData').innerHTML = `<div class="hist-loading">⏳ Cargando historial…</div>`;
-
-  const {start, end} = tgsDateRange(histPeriod);
-  fetch(`${TGS.urlGTS}api/historyReport/${TGS.hash}`, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify([{reportType:'0', unitId:String(unitId), startDate:start, endDate:end}])
+  fetch(`${PROXY_URL}/api/historial`, {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify({ unitId, startDate: start, endDate: end, alias })
   })
-  .then(r => { if(!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-  .then(data => renderHistorialData(data, start, end))
+  .then(r => {
+    if (!r.ok) return r.json().then(e => { throw new Error(e.error || `HTTP ${r.status}`); });
+    return r.blob();
+  })
+  .then(blob => {
+    // Trigger download in browser
+    const pad = n => String(n).padStart(2,'0');
+    const now = new Date();
+    const safe = alias.replace(/[^a-zA-Z0-9_\-]/g,'_');
+    const fname = `Historial_${safe}_${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}.xlsx`;
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href = url; a.download = fname; a.click();
+    URL.revokeObjectURL(url);
+    document.getElementById('histMenu').style.display = 'none';
+  })
   .catch(e => {
-    document.getElementById('histData').innerHTML = `
-      <div style="padding:24px;color:var(--red);font-family:'Space Mono',monospace;font-size:12px;">
-        ⚠ ${e.message}<br><br>
-        <span style="color:var(--muted2);">Si ves un error CORS, vuelve a abrir el dashboard usando el marcador de Chrome desde TrackGTS.</span>
-      </div>`;
-  })
-  .finally(() => { btn.disabled=false; btn.textContent='Consultar ▶'; });
+    itemEl.classList.remove('loading');
+    itemEl.innerHTML = `<span>⚠</span> ${e.message}`;
+    setTimeout(() => { document.getElementById('histMenu').style.display='none'; }, 3000);
+  });
 }
 
-function renderHistorialData(data, start, end) {
+function generateHistExcel(data, alias, start, end) {
   const rows = Array.isArray(data) ? data : [];
-  const alias = document.getElementById('histUnit').selectedOptions[0]?.text || '';
-  const div = document.getElementById('histData');
-  if (!rows.length) {
-    div.innerHTML = `<div style="text-align:center;padding:32px;color:var(--muted);">Sin datos para el período seleccionado.</div>`;
-    return;
-  }
-  div.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <span style="font-weight:700;">${alias}</span>
-      <span class="mono" style="color:var(--muted2);font-size:11px;">${start} → ${end} · ${rows.length} registros</span>
-    </div>
-    <div style="overflow-x:auto;">
-    <table class="data-table">
-      <thead><tr><th>#</th><th>Fecha / Hora</th><th>Estado</th><th>Ignición</th><th>Velocidad</th><th>Odómetro</th><th>Coordenadas</th><th>Tipo msg</th></tr></thead>
-      <tbody>${rows.slice(0,500).map((r,i)=>{
-        const mov=r.isMoving||r.speed>0, ign=r.ignition;
-        return `<tr>
-          <td><span class="mono" style="color:var(--muted);">${String(i+1).padStart(3,'0')}</span></td>
-          <td><span class="mono">${r.date||'—'}</span></td>
-          <td><span style="font-size:11px;font-weight:600;color:${mov?'var(--green)':'var(--muted2)'};">${mov?'En movimiento':'Detenido'}</span></td>
-          <td><span style="font-size:11px;color:${ign?'var(--green)':'var(--muted2)'};">${ign?'Encendido':'Apagado'}</span></td>
-          <td><span class="mono" style="color:${r.speed>=100?'var(--red)':r.speed>=80?'var(--amber)':'var(--text)'};">${r.speed||0} km/h</span></td>
-          <td><span class="mono" style="color:var(--muted2);">${r.odometer||0} km</span></td>
-          <td><span class="mono" style="font-size:10px;color:var(--muted2);">${r.lat||''},${r.lon||''}</span></td>
-          <td><span class="mono" style="font-size:10px;color:var(--muted);">${r.messageType||r.msgType||'—'}</span></td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table></div>`;
+  const headers = ['Alias','Fecha GPS','Coordenadas','GPS','Estado','Ignición','Motor','Velocidad','Odómetro','EPS','Carga Batería','Tipo'];
+  const sheetData = [
+    ['Seguimiento de la Unidad'],
+    headers,
+    ...rows.map(r => [
+      alias,
+      r.date || '',
+      `${r.lat || ''} , ${r.lon || ''}`,
+      r.gps || 'OK',
+      r.isMoving || r.speed > 0 ? 'En Movimiento' : 'Detenido',
+      r.ignition ? 'Encendido' : 'Apagado',
+      r.dOut1 !== undefined ? String(r.dOut1) : '-',
+      r.speed || 0,
+      r.odometer || 0,
+      r.eps ? (r.eps / 1000).toFixed(1) + ' V' : '-',
+      '-',
+      r.messageType || r.msgType || ''
+    ])
+  ];
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(sheetData);
+  XLSX.utils.book_append_sheet(wb, ws, 'Información del Recorrido');
+  const pad = n => String(n).padStart(2,'0');
+  const now = new Date();
+  const fname = `Historial ${alias.split(' ').pop()} ${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}.xlsx`;
+  XLSX.writeFile(wb, fname);
 }
 
 function showLoading(msg) { document.getElementById('loadingScreen').classList.remove('hidden'); document.getElementById('loadMsg').textContent=msg; }
