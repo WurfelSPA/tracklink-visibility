@@ -62,6 +62,20 @@ async function doLogin() {
   return hash;
 }
 
+async function getUnitIds(hash) {
+  if (UNIT_IDS) { console.log('[UNITS] Usando TL_UNIT_IDS:', UNIT_IDS); return UNIT_IDS; }
+  console.log('[UNITS] TL_UNIT_IDS vacío, obteniendo unidades del sistema...');
+  const r    = await fetch(`${URLGTS}api/units2/${hash}?callback=cb&_=${Date.now()}`);
+  const text = await r.text();
+  const json = JSON.parse(text.replace(/^[^(]+\(/, '').replace(/\);?\s*$/, ''));
+  const ids  = json
+    .filter(u => u.unitId > 0 && u.alias && !/^\s*(No Asignado|Flota|Cortadoras)/i.test(u.alias))
+    .map(u => String(u.unitId))
+    .join(',');
+  console.log(`[UNITS] ${ids.split(',').length} unidades: ${ids}`);
+  return ids;
+}
+
 async function main() {
   const now   = new Date();
   const start = new Date(now); start.setDate(start.getDate() - 7);
@@ -71,11 +85,12 @@ async function main() {
   console.log('=== Visibility Downloader ===');
   console.log(`Rango: ${startDate} → ${endDate} | Tipo: ${REPORT_TYPE}`);
 
-  const hash = await doLogin();
+  const hash    = await doLogin();
+  const unitIds = await getUnitIds(hash);
 
   const body = JSON.stringify({
     startDate, endDate,
-    unitIds:    UNIT_IDS,
+    unitIds,
     reportName: REPORT_NAME,
     parameters: 'undefined',
     userTimeZone: -4, userfuelMeasure: 0, userMeasureDistance: 0, language: 0,
