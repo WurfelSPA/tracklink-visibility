@@ -771,15 +771,15 @@ async function downloadHistorial(alias, period, itemEl) {
   const periodLabel = HIST_PERIODS.find(p => p.k === period)?.l || period;
   showToast(`⏳ Cargando historial de ${shortName} — ${periodLabel}…`, 'loading', 0);
 
-  // Si las unidades aún no están cargadas, intentar cargarlas ahora
+  // Si las unidades aún no están cargadas, cargarlas ahora (con timeout visible)
   if (!TGS.units.length) {
+    showToast(`🔄 Conectando con servidor TrackGTS… (primera vez ~30s)`, 'loading', 0);
     try {
-      showToast(`🔄 Conectando con servidor…`, 'loading', 0);
       const r = await fetch(`${PROXY_URL}/api/units`);
       const data = await r.json();
       if (Array.isArray(data)) TGS.units = data;
     } catch(e) {
-      // Continúa de todas formas — el proxy puede aún funcionar para historial
+      // continúa igual
     }
   }
 

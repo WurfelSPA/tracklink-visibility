@@ -16,8 +16,9 @@ const TL_DOMAIN = process.env.TL_ADMIN_DOMAIN || 'tlchile';
 const TL_PASS   = process.env.TL_ADMIN_PASS;          // required — set in Render env vars
 const TL_CLIENT = process.env.TL_CLIENT_NAME  || 'visibility';
 
-// ─── Session cache ──────────────────────────────────────────────────────────
-let session = { hash: null, urlGTS: null, expiry: 0 };
+// ─── Session cache + mutex ──────────────────────────────────────────────────
+let session        = { hash: null, urlGTS: null, expiry: 0 };
+let sessionPromise = null; // prevents concurrent login attempts
 
 // ─── Browserless login script ───────────────────────────────────────────────
 // Mirrors exactly the n8n Configuración node logic
@@ -121,28 +122,52 @@ export default async function({ page, context }) {
 async function getSession() {
   if (session.hash && Date.now() < session.expiry) return session;
 
+  // Mutex: si ya hay un login en curso, esperar al mismo
+  if (sessionPromise) {
+    console.log('[AUTH] Login ya en progreso — esperando...');
+    return sessionPromise;
+  }
+
+  sessionPromise = _doLogin().finally(() => { sessionPromise = null; });
+  return sessionPromise;
+}
+
+async function _doLogin() {
   console.log('[AUTH] Starting Browserless login...');
 
-  // Warm-up Render (prevents cold-start timeout)
+  // Warm-up Render: despierta Browserless si está dormido (free tier)
+  console.log('[AUTH] Warming up Browserless...');
   await fetch(`${BROWSERLESS_URL}/json/version?token=${BROWSERLESS_TOKEN}`)
-    .catch(() => {});
+    .catch(e => console.log('[AUTH] Warm-up error (ignorado):', e.message));
 
-  const resp = await fetch(`${BROWSERLESS_URL}/function?token=${BROWSERLESS_TOKEN}`, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      code:    LOGIN_SCRIPT,
-      context: { user: TL_USER, domain: TL_DOMAIN, pass: TL_PASS, clientName: TL_CLIENT }
-    })
-  });
+  // Timeout de 120s para el script completo (login ~15s + navegación ~15s)
+  const controller = new AbortController();
+  const timeout    = setTimeout(() => controller.abort(), 120_000);
+
+  let resp;
+  try {
+    resp = await fetch(`${BROWSERLESS_URL}/function?token=${BROWSERLESS_TOKEN}`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal:  controller.signal,
+      body: JSON.stringify({
+        code:    LOGIN_SCRIPT,
+        context: { user: TL_USER, domain: TL_DOMAIN, pass: TL_PASS, clientName: TL_CLIENT }
+      })
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!resp.ok) {
     const txt = await resp.text().catch(() => '');
-    throw new Error(`Browserless ${resp.status}: ${txt.substring(0, 200)}`);
+    throw new Error(`Browserless ${resp.status}: ${txt.substring(0, 300)}`);
   }
 
   const data = await resp.json();
-  if (!data.hash) throw new Error('No hash in Browserless response: ' + JSON.stringify(data).substring(0, 200));
+  console.log('[AUTH] Browserless response:', JSON.stringify(data).substring(0, 200));
+
+  if (!data.hash) throw new Error('No hash en respuesta: ' + JSON.stringify(data).substring(0, 300));
 
   session = { hash: data.hash, urlGTS: data.urlGTS, expiry: Date.now() + 8 * 60 * 60 * 1000 };
   console.log('[AUTH] Session OK ·', session.hash.substring(0, 22) + '...');
@@ -259,7 +284,6 @@ app.listen(PORT, () => {
   if (!TL_PASS) {
     console.error('[ERROR] TL_ADMIN_PASS no está configurado — define la variable de entorno');
   } else {
-    // Pre-warm session on startup
-    getSession().catch(e => console.error('[STARTUP AUTH]', e.message));
+    console.log('[SERVER] Listo. La sesión TrackGTS se obtendrá en la primera petición.');
   }
 });
