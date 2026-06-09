@@ -38,11 +38,13 @@ export default async function({ page, context }) {
   const w = ms => new Promise(r => setTimeout(r, ms));
 
   await page.goto('https://tlchile.trackgts.com/admin/login.html',
-    { waitUntil: 'networkidle0', timeout: 60000 });
-  await page.waitForSelector('#username', { timeout: 30000 });
+    { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await w(3000);
+  await page.waitForSelector('#username', { timeout: 60000 });
   await page.evaluate(() => localStorage.setItem('sltLanguage', '0'));
-  await page.reload({ waitUntil: 'networkidle0' });
-  await page.waitForSelector('#username', { timeout: 30000 });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await w(3000);
+  await page.waitForSelector('#username', { timeout: 60000 });
 
   await page.evaluate((user, domain, pass) => {
     const K = 'd5fg4df5sg4ds5fg';
@@ -61,7 +63,7 @@ export default async function({ page, context }) {
     onLoginOn();
   }, context.user, context.domain, context.pass);
 
-  await w(15000);
+  await w(20000); // espera que la sesión admin se establezca
 
   await page.evaluate(() => {
     const link = document.querySelector('a.langMainClientes');
