@@ -706,33 +706,43 @@ function loadTGSUnits() {
 }
 
 function tgsDateRange(period) {
-  const pad = n => String(n).padStart(2,'0');
-  const fmt = d => `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`;
-  const now  = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 4, 0, 0);
-  const nextDay    = new Date(todayStart); nextDay.setDate(nextDay.getDate()+1);
+  const pad = n => String(n).padStart(2, '0');
+  const now = new Date();
+
+  // Medianoche local (00:00:00) usando getters de zona local del navegador
+  const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
+  const endOfDay   = d => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59);
+
+  // El API espera fechas en UTC → usamos getUTC* para formatear
+  const fmtUTC = d => {
+    const u = new Date(d.getTime()); // mismos ms, pero leemos en UTC
+    return `${u.getUTCFullYear()}/${pad(u.getUTCMonth()+1)}/${pad(u.getUTCDate())} ` +
+           `${pad(u.getUTCHours())}:${pad(u.getUTCMinutes())}:${pad(u.getUTCSeconds())}`;
+  };
+
+  const today = startOfDay(now);
+
   switch(period) {
     case 'hora': {
-      const s = new Date(now.getTime()-3600000);
-      return {start:`${fmt(s)} ${pad(s.getHours())}:${pad(s.getMinutes())}:00`,
-              end:`${fmt(now)} ${pad(now.getHours())}:${pad(now.getMinutes())}:59`};
+      const s = new Date(now.getTime() - 3600000);
+      return { start: fmtUTC(s), end: fmtUTC(now) };
     }
     case 'hoy':
-      return {start:`${fmt(todayStart)} 04:00:00`, end:`${fmt(nextDay)} 03:59:59`};
+      return { start: fmtUTC(startOfDay(today)), end: fmtUTC(endOfDay(today)) };
     case 'ayer': {
-      const s = new Date(todayStart); s.setDate(s.getDate()-1);
-      return {start:`${fmt(s)} 04:00:00`, end:`${fmt(todayStart)} 03:59:59`};
+      const ayer = new Date(today.getTime() - 86400000);
+      return { start: fmtUTC(startOfDay(ayer)), end: fmtUTC(endOfDay(ayer)) };
     }
     case '2dias': {
-      const s = new Date(todayStart); s.setDate(s.getDate()-2);
-      return {start:`${fmt(s)} 04:00:00`, end:`${fmt(nextDay)} 03:59:59`};
+      const s = new Date(today.getTime() - 2 * 86400000);
+      return { start: fmtUTC(startOfDay(s)), end: fmtUTC(endOfDay(today)) };
     }
     case '3dias': {
-      const s = new Date(todayStart); s.setDate(s.getDate()-3);
-      return {start:`${fmt(s)} 04:00:00`, end:`${fmt(nextDay)} 03:59:59`};
+      const s = new Date(today.getTime() - 3 * 86400000);
+      return { start: fmtUTC(startOfDay(s)), end: fmtUTC(endOfDay(today)) };
     }
     default:
-      return {start:`${fmt(todayStart)} 04:00:00`, end:`${fmt(nextDay)} 03:59:59`};
+      return { start: fmtUTC(startOfDay(today)), end: fmtUTC(endOfDay(today)) };
   }
 }
 

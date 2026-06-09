@@ -100,7 +100,10 @@ function truncDec(n, decimals) {
 // Convert UTC ISO string to Chile local time (UTC-4) formatted as YYYY/MM/DD HH:mm:ss
 function toChileTime(utcStr) {
   if (!utcStr) return '';
-  const d = new Date(utcStr.replace(' ', 'T') + (utcStr.includes('T') ? '' : 'Z'));
+  // Ensure string is parsed as UTC (append Z if no timezone info)
+  let s = utcStr.replace(' ', 'T');
+  if (!s.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(s)) s += 'Z';
+  const d = new Date(s);
   if (isNaN(d)) return utcStr;
   const local = new Date(d.getTime() - 4 * 3600 * 1000);
   const pad   = n => String(n).padStart(2, '0');
