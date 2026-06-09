@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: tracklink-visibility-proxy
+    env: node
+    plan: free
+    rootDir: proxy
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: TL_ADMIN_USER
+        value: amelendez
+      - key: TL_ADMIN_DOMAIN
+        value: tlchile
+      - key: TL_ADMIN_PASS
+        sync: false
+      - key: TL_CLIENT_NAME
+        value: visibility
+      - key: BROWSERLESS_URL
+        value: https://wurfel-browserless.onrender.com
+      - key: BROWSERLESS_TOKEN
+        value: d7ce9e246736fb306597659ab9794434

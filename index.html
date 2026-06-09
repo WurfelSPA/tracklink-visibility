@@ -88,6 +88,11 @@ body{font-family:'Epilogue',sans-serif;background:var(--ink);color:var(--text);m
 .hist-menu-item.loading{opacity:.5;pointer-events:none;}
 .connect-card{background:var(--amber-dim);border:1px solid rgba(217,119,6,.3);border-radius:12px;padding:20px 24px;}
 .bookmarklet-link{display:inline-block;background:var(--amber);color:#fff;border-radius:6px;padding:7px 18px;font-weight:700;font-size:13px;text-decoration:none;font-family:'Epilogue',sans-serif;cursor:grab;}
+/* ── Toast notificaciones ─── */
+#dlToast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:99999;
+  padding:11px 22px;border-radius:8px;font-family:'Space Mono',monospace;font-size:12px;
+  font-weight:700;box-shadow:0 4px 20px rgba(0,0,0,.18);display:none;
+  max-width:420px;text-align:center;transition:opacity .3s;}
 </style>
 </head>
 <body>
@@ -145,6 +150,9 @@ body{font-family:'Epilogue',sans-serif;background:var(--ink);color:var(--text);m
 <div id="tab-resumen"  class="tab-view active"></div>
 <div id="tab-vehiculo" class="tab-view"></div>
 <div id="tab-detalle"  class="tab-view"></div>
+<!-- Toast de estado -->
+<div id="dlToast"></div>
+
 <!-- Menú contextual historial -->
 <div id="histMenu" class="hist-menu">
   <div class="hist-menu-title" id="histMenuTitle"></div>
@@ -157,7 +165,7 @@ body{font-family:'Epilogue',sans-serif;background:var(--ink);color:var(--text);m
 
 <script>
 const EXCEL_URL  = 'https://raw.githubusercontent.com/WurfelSPA/tracklink-visibility/main/REPORTE%20DE%20RECORRIDO.xlsx';
-const PROXY_URL  = 'https://tracklink-visibility-proxy.onrender.com'; // URL del proxy en Render
+const PROXY_URL  = 'https://tracklink-visibility.onrender.com'; // Proxy en Render
 const PALETTE    = ['#1a6bb5','#16a34a','#d97706','#dc2626','#7c3aed','#0891b2','#db2777','#65a30d','#ea580c','#0284c7','#9333ea','#0d9488','#b45309','#1d4ed8','#15803d','#b91c1c','#6d28d9'];
 
 let G = { trips:[], allTrips:[], vehiculos:{}, resumen:{}, meta:{}, colors:{} };
@@ -754,46 +762,88 @@ function getTGSUnitId(alias) {
   return partial ? partial.id : null;
 }
 
-function downloadHistorial(alias, period, itemEl) {
-  // Buscar unitId en la lista cargada desde el proxy, o desde los viajes del Excel
+async function downloadHistorial(alias, period, itemEl) {
+  itemEl.classList.add('loading');
+  itemEl.innerHTML = `<span>⏳</span> Iniciando…`;
+  document.getElementById('histMenu').style.display = 'none';
+
+  const shortName = alias.split(' ').slice(-1)[0];
+  const periodLabel = HIST_PERIODS.find(p => p.k === period)?.l || period;
+  showToast(`⏳ Cargando historial de ${shortName} — ${periodLabel}…`, 'loading', 0);
+
+  // Si las unidades aún no están cargadas, intentar cargarlas ahora
+  if (!TGS.units.length) {
+    try {
+      showToast(`🔄 Conectando con servidor…`, 'loading', 0);
+      const r = await fetch(`${PROXY_URL}/api/units`);
+      const data = await r.json();
+      if (Array.isArray(data)) TGS.units = data;
+    } catch(e) {
+      // Continúa de todas formas — el proxy puede aún funcionar para historial
+    }
+  }
+
   const unitId = getTGSUnitId(alias);
   if (!unitId) {
-    itemEl.innerHTML = `<span>⚠</span> Vehículo no encontrado en el sistema`;
-    setTimeout(() => { document.getElementById('histMenu').style.display='none'; }, 2000);
+    showToast(`⚠ Vehículo "${shortName}" no encontrado en el sistema`, 'error', 5000);
     return;
   }
 
-  itemEl.classList.add('loading');
-  itemEl.innerHTML = `<span>⏳</span> Descargando…`;
-
   const {start, end} = tgsDateRange(period);
+  showToast(`⏳ Generando Excel para ${shortName}…`, 'loading', 0);
 
-  fetch(`${PROXY_URL}/api/historial`, {
-    method:  'POST',
-    headers: {'Content-Type': 'application/json'},
-    body:    JSON.stringify({ unitId, startDate: start, endDate: end, alias })
-  })
-  .then(r => {
-    if (!r.ok) return r.json().then(e => { throw new Error(e.error || `HTTP ${r.status}`); });
-    return r.blob();
-  })
-  .then(blob => {
-    // Trigger download in browser
-    const pad = n => String(n).padStart(2,'0');
-    const now = new Date();
+  try {
+    const r = await fetch(`${PROXY_URL}/api/historial`, {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({ unitId, startDate: start, endDate: end, alias })
+    });
+
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({error: `HTTP ${r.status}`}));
+      throw new Error(err.error || `HTTP ${r.status}`);
+    }
+
+    const blob = await r.blob();
+    const pad  = n => String(n).padStart(2,'0');
+    const now  = new Date();
     const safe = alias.replace(/[^a-zA-Z0-9_\-]/g,'_');
     const fname = `Historial_${safe}_${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}.xlsx`;
+
     const url = URL.createObjectURL(blob);
     const a   = document.createElement('a');
     a.href = url; a.download = fname; a.click();
     URL.revokeObjectURL(url);
-    document.getElementById('histMenu').style.display = 'none';
-  })
-  .catch(e => {
-    itemEl.classList.remove('loading');
-    itemEl.innerHTML = `<span>⚠</span> ${e.message}`;
-    setTimeout(() => { document.getElementById('histMenu').style.display='none'; }, 3000);
-  });
+
+    showToast(`✅ Descargado: ${fname}`, 'success', 4000);
+
+  } catch(e) {
+    showToast(`❌ Error: ${e.message}`, 'error', 6000);
+    console.error('[downloadHistorial]', e);
+  }
+}
+
+function showToast(msg, type, duration) {
+  const COLORS = {
+    loading: {bg:'#1e293b', color:'#e2e8f0'},
+    success: {bg:'var(--green)', color:'#fff'},
+    error:   {bg:'var(--red)',   color:'#fff'},
+    info:    {bg:'var(--blue)',  color:'#fff'},
+  };
+  const t = document.getElementById('dlToast');
+  const c = COLORS[type] || COLORS.info;
+  t.style.background = c.bg;
+  t.style.color      = c.color;
+  t.textContent      = msg;
+  t.style.display    = 'block';
+  t.style.opacity    = '1';
+  if (t._timer) clearTimeout(t._timer);
+  if (duration > 0) {
+    t._timer = setTimeout(() => {
+      t.style.opacity = '0';
+      setTimeout(() => { t.style.display = 'none'; }, 300);
+    }, duration);
+  }
 }
 
 function generateHistExcel(data, alias, start, end) {
