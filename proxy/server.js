@@ -90,20 +90,43 @@ async function _doLogin() {
   return session;
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+// Truncate to N decimals (same as portal's toFixedNoRound)
+function truncDec(n, decimals) {
+  const factor = Math.pow(10, decimals);
+  return Math.trunc(n * factor) / factor;
+}
+
+// Convert UTC ISO string to Chile local time (UTC-4) formatted as YYYY/MM/DD HH:mm:ss
+function toChileTime(utcStr) {
+  if (!utcStr) return '';
+  const d = new Date(utcStr.replace(' ', 'T') + (utcStr.includes('T') ? '' : 'Z'));
+  if (isNaN(d)) return utcStr;
+  const local = new Date(d.getTime() - 4 * 3600 * 1000);
+  const pad   = n => String(n).padStart(2, '0');
+  return `${local.getUTCFullYear()}/${pad(local.getUTCMonth()+1)}/${pad(local.getUTCDate())} ` +
+         `${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}:${pad(local.getUTCSeconds())}`;
+}
+
 // ─── Field mapping ───────────────────────────────────────────────────────────
 function mapRow(r, alias) {
+  const eps = r.epsC21 != null && r.epsC21 >= 0
+    ? truncDec(r.epsC21 / 1000, 1).toFixed(1) + ' V'
+    : '-';
+  const motor = r.dOut1C48 ? '1' : '';
+
   return [
     alias,
-    (r.gpsUtcTimeC13 || '').replace('T', ' '),
+    toChileTime(r.gpsUtcTimeC13 || ''),
     `${r.latC12 ?? ''} , ${r.lonC11 ?? ''}`,
     'OK',
-    r.speedC8 > 0 ? 'En Movimiento' : 'Detenido',
+    r.speedC8 > 0 ? 'En movimiento' : 'Detenido',
     r.ignStateC41  ? 'Encendido'    : 'Apagado',
-    String(r.dOut1C48 ?? 0),
+    motor,
     r.speedC8     ?? 0,
     r.odometerC14 ?? 0,
-    r.epsC21    != null ? (r.epsC21 / 1000).toFixed(1) + ' V' : '-',
-    r.intBattC20 != null ? r.intBattC20 + ' %'              : '-',
+    eps,
+    r.intBattC20 != null ? r.intBattC20 + ' %' : '-',
     r.msgTypeC0   ?? ''
   ];
 }
