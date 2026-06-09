@@ -22,14 +22,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm install puppeteer adm-zip
+          npm install adm-zip
           pip install openpyxl
 
       - name: Download report
         env:
-          TL_USER:        ${{ secrets.TL_USER }}
-          TL_PASSWORD:    ${{ secrets.TL_PASSWORD }}
-          TL_DOMAIN:      ${{ secrets.TL_DOMAIN }}
           TL_REPORT_TYPE: ${{ secrets.TL_REPORT_TYPE }}
           TL_UNIT_IDS:    ${{ secrets.TL_UNIT_IDS }}
         run: |
