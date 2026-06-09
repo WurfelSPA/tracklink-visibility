@@ -140,24 +140,14 @@ async function _doLogin() {
   await fetch(`${BROWSERLESS_URL}/json/version?token=${BROWSERLESS_TOKEN}`)
     .catch(e => console.log('[AUTH] Warm-up error (ignorado):', e.message));
 
-  // Timeout de 120s para el script completo (login ~15s + navegación ~15s)
-  const controller = new AbortController();
-  const timeout    = setTimeout(() => controller.abort(), 120_000);
-
-  let resp;
-  try {
-    resp = await fetch(`${BROWSERLESS_URL}/function?token=${BROWSERLESS_TOKEN}`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal:  controller.signal,
-      body: JSON.stringify({
-        code:    LOGIN_SCRIPT,
-        context: { user: TL_USER, domain: TL_DOMAIN, pass: TL_PASS, clientName: TL_CLIENT }
-      })
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
+  const resp = await fetch(`${BROWSERLESS_URL}/function?token=${BROWSERLESS_TOKEN}`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      code:    LOGIN_SCRIPT,
+      context: { user: TL_USER, domain: TL_DOMAIN, pass: TL_PASS, clientName: TL_CLIENT }
+    })
+  });
 
   if (!resp.ok) {
     const txt = await resp.text().catch(() => '');

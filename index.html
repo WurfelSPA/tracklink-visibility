@@ -670,7 +670,27 @@ function fmtDate(s) {
 // ══════════════════════════════════════════════════════
 // TRACKGTS SESSION
 // ══════════════════════════════════════════════════════
-const TGS = { hash: null, urlGTS: null, units: [], connected: false };
+// Fallback: IDs conocidos de la flota (se actualizan si el proxy responde)
+const TGS_UNITS_FALLBACK = [
+  {id:3182,alias:'VOLKSWAGEN AMAROK KPDV-13'},
+  {id:4069,alias:'CHANGAN HUNTER TKCS-53'},
+  {id:4067,alias:'SUZUKI CARRY SKDB-52'},
+  {id:4074,alias:'OPEL COMBO'},
+  {id:4070,alias:'CHANGAN HUNTER TGPS-77'},
+  {id:4081,alias:'JAC X200 SJTJ-50'},
+  {id:4376,alias:'CHANGAN HUNTER TKCL-70'},
+  {id:6440,alias:'LPR20251H02800016-STL'},
+  {id:6444,alias:'LPR20251T02900038-RTN'},
+  {id:6446,alias:'LPR20251L02790031-SV'},
+  {id:4076,alias:'MITSUBISHI L200 LVHX-40'},
+  {id:6459,alias:'LPR20251T02800022'},
+  {id:4073,alias:'MITSUBISHI L200 PHZF-89'},
+  {id:6436,alias:'LPR20251V02900023-LL'},
+  {id:6479,alias:'LPR20251E02900022'},
+  {id:6462,alias:'LPR20251P02790030-ALD'},
+  {id:6474,alias:'LPR20251A02800014-DS'},
+];
+const TGS = { hash: null, urlGTS: null, units: TGS_UNITS_FALLBACK.slice(), connected: false };
 
 function initTGSSession() {
   // Con el proxy, no se necesita sesión del lado cliente — carga unidades directamente
