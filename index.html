@@ -78,6 +78,17 @@ body{font-family:'Epilogue',sans-serif;background:var(--ink);color:var(--text);m
 #loadError{font-family:'Space Mono',monospace;font-size:12px;color:var(--red);max-width:500px;text-align:center;display:none;}
 #loadRetry{display:none;background:var(--red);color:#fff;border:none;border-radius:6px;padding:8px 18px;font-weight:700;cursor:pointer;}
 @media(max-width:1100px){.kpi-row{grid-template-columns:repeat(3,1fr);}.grid2,.grid3{grid-template-columns:1fr;}}
+/* ── Historial GPS ──────────────────────────────────── */
+.period-btns{display:flex;gap:6px;flex-wrap:wrap;}
+.period-btn{padding:5px 14px;border:1.5px solid var(--line2);border-radius:6px;background:var(--ink2);color:var(--muted2);font-family:'Space Mono',monospace;font-size:11px;cursor:pointer;font-weight:700;transition:all .15s;}
+.period-btn.active,.period-btn:hover{background:var(--blue);color:#fff;border-color:var(--blue);}
+.hist-unit-sel{background:var(--ink3);border:1px solid var(--line2);border-radius:8px;padding:8px 14px;font-family:'Epilogue',sans-serif;font-size:13px;color:var(--text);min-width:260px;outline:none;}
+.hist-unit-sel:focus{border-color:var(--blue);}
+#btnConsultarHist{background:var(--blue);color:#fff;border:none;border-radius:6px;padding:7px 22px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Epilogue',sans-serif;}
+#btnConsultarHist:disabled{opacity:.5;cursor:not-allowed;}
+.hist-loading{text-align:center;padding:48px;color:var(--muted);font-family:'Space Mono',monospace;font-size:12px;}
+.connect-card{background:var(--amber-dim);border:1px solid rgba(217,119,6,.3);border-radius:12px;padding:20px 24px;}
+.bookmarklet-link{display:inline-block;background:var(--amber);color:#fff;border-radius:6px;padding:7px 18px;font-weight:700;font-size:13px;text-decoration:none;font-family:'Epilogue',sans-serif;cursor:grab;}
 </style>
 </head>
 <body>
@@ -130,11 +141,13 @@ body{font-family:'Epilogue',sans-serif;background:var(--ink);color:var(--text);m
   <button class="tab-btn active" onclick="showTab('resumen',this)">Vista General</button>
   <button class="tab-btn" onclick="showTab('vehiculo',this)">Por Vehículo</button>
   <button class="tab-btn" onclick="showTab('detalle',this)">Detalle de Viajes</button>
+  <button class="tab-btn" onclick="showTab('historial',this)">Historial GPS</button>
 </nav>
 
 <div id="tab-resumen"  class="tab-view active"></div>
 <div id="tab-vehiculo" class="tab-view"></div>
 <div id="tab-detalle"  class="tab-view"></div>
+<div id="tab-historial" class="tab-view"></div>
 
 <footer class="footer" id="appFooter" style="display:none;">
   Visibility Fleet Dashboard · <span id="footerText"></span>
@@ -149,12 +162,13 @@ let activeCharts = {};
 let currentUrl = EXCEL_URL;
 
 window.addEventListener('DOMContentLoaded', () => {
-  // Intentar mostrar logo si existe
   const logo = document.getElementById('brandLogo');
   const icon = document.getElementById('brandIcon');
   logo.onload  = () => { logo.style.display=''; icon.style.display='none'; };
   logo.onerror = () => { logo.style.display='none'; icon.style.display=''; };
   logo.src = 'logo.png';
+  initTGSSession();
+  renderHistorialTab();
   loadExcel(EXCEL_URL);
 });
 
@@ -640,6 +654,193 @@ function fmtDate(s) {
     .toLocaleDateString('es-CL',{day:'2-digit',month:'short',year:'numeric'}); }
   catch { return s; }
 }
+// ══════════════════════════════════════════════════════
+// TRACKGTS SESSION
+// ══════════════════════════════════════════════════════
+const TGS = { hash: null, urlGTS: null, units: [], connected: false };
+
+function initTGSSession() {
+  const p = new URLSearchParams(window.location.search);
+  const ts = p.get('ts'), api = p.get('api');
+  if (ts && api) {
+    TGS.hash   = decodeURIComponent(ts);
+    TGS.urlGTS = decodeURIComponent(api);
+    TGS.connected = true;
+    window.history.replaceState({}, '', window.location.pathname);
+    try { sessionStorage.setItem('tgs_session', JSON.stringify({hash:TGS.hash, urlGTS:TGS.urlGTS})); } catch(e){}
+    loadTGSUnits();
+    return;
+  }
+  try {
+    const saved = sessionStorage.getItem('tgs_session');
+    if (saved) {
+      const s = JSON.parse(saved);
+      TGS.hash = s.hash; TGS.urlGTS = s.urlGTS; TGS.connected = true;
+      loadTGSUnits();
+      return;
+    }
+  } catch(e) {}
+  TGS.connected = false;
+}
+
+function loadTGSUnits() {
+  if (!TGS.connected) return;
+  const cbName = '__tgsU_' + Date.now();
+  const script  = document.createElement('script');
+  window[cbName] = function(data) {
+    TGS.units = (Array.isArray(data) ? data : [])
+      .filter(u => u.unitId > 0 && u.alias && !/^(\s*No Asignado|Flota|Cortadoras)/i.test(u.alias))
+      .map(u => ({id: u.unitId, alias: u.alias.trim()}))
+      .sort((a,b) => a.alias.localeCompare(b.alias));
+    document.head.removeChild(script);
+    delete window[cbName];
+  };
+  script.src = `${TGS.urlGTS}api/units2/${TGS.hash}?callback=${cbName}&_=${Date.now()}`;
+  script.onerror = () => { document.head.removeChild(script); delete window[cbName]; };
+  document.head.appendChild(script);
+}
+
+function tgsDateRange(period) {
+  const pad = n => String(n).padStart(2,'0');
+  const fmt = d => `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`;
+  const now  = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 4, 0, 0);
+  const nextDay    = new Date(todayStart); nextDay.setDate(nextDay.getDate()+1);
+  switch(period) {
+    case 'hora': {
+      const s = new Date(now.getTime()-3600000);
+      return {start:`${fmt(s)} ${pad(s.getHours())}:${pad(s.getMinutes())}:00`,
+              end:`${fmt(now)} ${pad(now.getHours())}:${pad(now.getMinutes())}:59`};
+    }
+    case 'hoy':
+      return {start:`${fmt(todayStart)} 04:00:00`, end:`${fmt(nextDay)} 03:59:59`};
+    case 'ayer': {
+      const s = new Date(todayStart); s.setDate(s.getDate()-1);
+      return {start:`${fmt(s)} 04:00:00`, end:`${fmt(todayStart)} 03:59:59`};
+    }
+    case '2dias': {
+      const s = new Date(todayStart); s.setDate(s.getDate()-2);
+      return {start:`${fmt(s)} 04:00:00`, end:`${fmt(nextDay)} 03:59:59`};
+    }
+    case '3dias': {
+      const s = new Date(todayStart); s.setDate(s.getDate()-3);
+      return {start:`${fmt(s)} 04:00:00`, end:`${fmt(nextDay)} 03:59:59`};
+    }
+    default:
+      return {start:`${fmt(todayStart)} 04:00:00`, end:`${fmt(nextDay)} 03:59:59`};
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// HISTORIAL GPS TAB
+// ══════════════════════════════════════════════════════
+let histPeriod = 'hoy';
+
+function renderHistorialTab() {
+  const el = document.getElementById('tab-historial');
+  if (!TGS.connected) {
+    const bm = `javascript:(function(){var j=JSON.parse(sessionStorage.getItem('JSONUSER')||'null');if(!j){alert('Ingresa a TrackGTS primero');return;}var h=encodeURIComponent(j.hash),a=encodeURIComponent(sessionStorage.getItem('URLGTS')||'https://www.trackgts.com:82/');window.open('${window.location.origin}${window.location.pathname}?ts='+h+'\\x26api='+a,'_blank');})()`;
+    el.innerHTML = `
+    <div class="main">
+      <div class="connect-card">
+        <div class="sec-label">Conectar con TrackGTS</div>
+        <p style="font-size:13px;margin-bottom:12px;">Para consultar el Historial GPS, arrastra este botón a tu barra de marcadores de Chrome. Luego, cuando estés en TrackGTS, haz clic en él.</p>
+        <a class="bookmarklet-link" href="${bm}" onclick="return false;" draggable="true">📡 Dashboard → TrackGTS</a>
+        <p style="font-size:11px;color:var(--muted2);margin-top:10px;font-family:'Space Mono',monospace;">① Arrastra el botón a la barra de marcadores &nbsp;② En TrackGTS, haz clic en él</p>
+      </div>
+    </div>`;
+    return;
+  }
+
+  const PERIODS = [{k:'hora',l:'Última hora'},{k:'hoy',l:'Hoy'},{k:'ayer',l:'Ayer'},{k:'2dias',l:'Últ. 2 días'},{k:'3dias',l:'Últ. 3 días'}];
+  const unitOpts = TGS.units.map(u=>`<option value="${u.id}">${u.alias}</option>`).join('');
+
+  el.innerHTML = `
+  <div class="main">
+    <div class="card">
+      <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+        <div>
+          <div class="fl-label" style="margin-bottom:5px;">Vehículo</div>
+          <select id="histUnit" class="hist-unit-sel">
+            <option value="">— Seleccionar —</option>${unitOpts}
+          </select>
+        </div>
+        <div>
+          <div class="fl-label" style="margin-bottom:5px;">Período</div>
+          <div class="period-btns">
+            ${PERIODS.map(p=>`<button class="period-btn${p.k===histPeriod?' active':''}" onclick="setHistPeriod('${p.k}',this)">${p.l}</button>`).join('')}
+          </div>
+        </div>
+        <button id="btnConsultarHist" onclick="consultarHistorial()">Consultar ▶</button>
+      </div>
+      <div id="histData"><div class="hist-loading">Selecciona vehículo y período.</div></div>
+    </div>
+  </div>`;
+}
+
+function setHistPeriod(p, btn) {
+  histPeriod = p;
+  document.querySelectorAll('.period-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function consultarHistorial() {
+  const unitId = document.getElementById('histUnit')?.value;
+  if (!unitId) { alert('Selecciona un vehículo'); return; }
+  const btn = document.getElementById('btnConsultarHist');
+  btn.disabled = true; btn.textContent = 'Consultando…';
+  document.getElementById('histData').innerHTML = `<div class="hist-loading">⏳ Cargando historial…</div>`;
+
+  const {start, end} = tgsDateRange(histPeriod);
+  fetch(`${TGS.urlGTS}api/historyReport/${TGS.hash}`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify([{reportType:'0', unitId:String(unitId), startDate:start, endDate:end}])
+  })
+  .then(r => { if(!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+  .then(data => renderHistorialData(data, start, end))
+  .catch(e => {
+    document.getElementById('histData').innerHTML = `
+      <div style="padding:24px;color:var(--red);font-family:'Space Mono',monospace;font-size:12px;">
+        ⚠ ${e.message}<br><br>
+        <span style="color:var(--muted2);">Si ves un error CORS, vuelve a abrir el dashboard usando el marcador de Chrome desde TrackGTS.</span>
+      </div>`;
+  })
+  .finally(() => { btn.disabled=false; btn.textContent='Consultar ▶'; });
+}
+
+function renderHistorialData(data, start, end) {
+  const rows = Array.isArray(data) ? data : [];
+  const alias = document.getElementById('histUnit').selectedOptions[0]?.text || '';
+  const div = document.getElementById('histData');
+  if (!rows.length) {
+    div.innerHTML = `<div style="text-align:center;padding:32px;color:var(--muted);">Sin datos para el período seleccionado.</div>`;
+    return;
+  }
+  div.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <span style="font-weight:700;">${alias}</span>
+      <span class="mono" style="color:var(--muted2);font-size:11px;">${start} → ${end} · ${rows.length} registros</span>
+    </div>
+    <div style="overflow-x:auto;">
+    <table class="data-table">
+      <thead><tr><th>#</th><th>Fecha / Hora</th><th>Estado</th><th>Ignición</th><th>Velocidad</th><th>Odómetro</th><th>Coordenadas</th><th>Tipo msg</th></tr></thead>
+      <tbody>${rows.slice(0,500).map((r,i)=>{
+        const mov=r.isMoving||r.speed>0, ign=r.ignition;
+        return `<tr>
+          <td><span class="mono" style="color:var(--muted);">${String(i+1).padStart(3,'0')}</span></td>
+          <td><span class="mono">${r.date||'—'}</span></td>
+          <td><span style="font-size:11px;font-weight:600;color:${mov?'var(--green)':'var(--muted2)'};">${mov?'En movimiento':'Detenido'}</span></td>
+          <td><span style="font-size:11px;color:${ign?'var(--green)':'var(--muted2)'};">${ign?'Encendido':'Apagado'}</span></td>
+          <td><span class="mono" style="color:${r.speed>=100?'var(--red)':r.speed>=80?'var(--amber)':'var(--text)'};">${r.speed||0} km/h</span></td>
+          <td><span class="mono" style="color:var(--muted2);">${r.odometer||0} km</span></td>
+          <td><span class="mono" style="font-size:10px;color:var(--muted2);">${r.lat||''},${r.lon||''}</span></td>
+          <td><span class="mono" style="font-size:10px;color:var(--muted);">${r.messageType||r.msgType||'—'}</span></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+}
+
 function showLoading(msg) { document.getElementById('loadingScreen').classList.remove('hidden'); document.getElementById('loadMsg').textContent=msg; }
 function setLoadMsg(msg)  { document.getElementById('loadMsg').textContent=msg; }
 function hideLoading()    { document.getElementById('loadingScreen').classList.add('hidden'); }
