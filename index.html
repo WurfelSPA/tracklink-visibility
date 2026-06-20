@@ -160,7 +160,7 @@ body{font-family:'Epilogue',sans-serif;background:var(--ink);color:var(--text);m
 </div>
 
 <footer class="footer" id="appFooter" style="display:none;">
-  Tracklink Chile Fleet Dashboard &nbsp;·&nbsp; <span id="footerText"></span> &nbsp;·&nbsp; generado automáticamente &nbsp;·&nbsp; By <strong>Würfel SpA</strong>
+  Tracklink Chile Fleet Dashboard By Würfel SPA &nbsp;·&nbsp; <span id="footerText"></span> &nbsp;·&nbsp; generado automáticamente por IA
 </footer>
 
 <script>
@@ -340,7 +340,7 @@ function renderApp() {
   if (G.meta.desde && G.meta.hasta)
     document.getElementById('periodLabel').textContent = `${fmtDate(G.meta.desde)} — ${fmtDate(G.meta.hasta)}`;
   document.getElementById('filterCount').textContent = `${G.allTrips.length} viajes`;
-  document.getElementById('footerText').textContent  = `${G.allTrips.length} viajes`;
+  document.getElementById('footerText').textContent  = `Reporte · ${G.allTrips.length} eventos`;
 
   renderResumen();
   renderVehiculoTab();
