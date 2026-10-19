@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/historial.js": { "maxDuration": 120 },
+    "api/units.js": { "maxDuration": 30 }
+  },
+  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- ."
+}
